@@ -1,4 +1,6 @@
 from pathlib import Path
+from datetime import timedelta
+
 from django.conf.global_settings import MEDIA_URL, MEDIA_ROOT
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -26,6 +28,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    'rest_framework_simplejwt',
+    'rest_fromework_simplejwt.token_blaclist',
+    
     'users',
     'shred'
 ]
@@ -56,6 +62,16 @@ TEMPLATES = [
         },
     },
 ]
+
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=20),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': False,
+    'UPDATE_LAST_LOGIN': False,
+    'ALGORITHM': 'HS256',
+}
 
 WSGI_APPLICATION = 'config.wsgi.application'
 

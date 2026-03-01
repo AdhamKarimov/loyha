@@ -7,6 +7,7 @@ from django.core.validators import FileExtensionValidator
 from shared.models import BaseModels
 from datetime import datetime,timedelta
 from config.settings import EMAIL_EXPIRATION_TIME,PHONE_EXPIRATION_TIME
+from rest_framework_simplejwt.tokens import RefreshToken
 # Create your models here.
 
 
@@ -62,16 +63,35 @@ class CustomUser(BaseModels,AbstractUser):
             email_normaliz = self.email.lower()
             self.email = email_normaliz
 
+    def token(self):
+        refresh_token = RefreshToken.for_user(self)
+
+        data = {
+            'refresh':str(refresh_token),
+            'access':str(refresh_token.access_token)
+        }
+        return data
+
+    def generate_cod(self,verify_type):
+        code = ''.join([random.randint(1000,9999)%10 for _ in range(4)])
+        CodeVerify.objects.create(
+            code=code,
+            user=self,
+            verify_type=verify_type
+        )
+        return code
+
+
+
     def clean(self):
         self.check_email()
         self.check_username()
         self.check_pass()
         self.hashing_pass()
-        return super().clean()
 
     def save(self, force_insert = ...,force_update = ..., using = ..., update_fields = ...):
         self.clean()
-        return super().save(force_insert,force_update, using, update_fields)
+        super().save(force_insert,force_update, using, update_fields)
 
 
 class CodeVerify(BaseModels):
