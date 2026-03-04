@@ -12,7 +12,3 @@ class SignUpView(CreateAPIView):
     permission_classes = (AllowAny,)
     serializer_class = SignUpSerializer
     queryset = CustomUser
-
-    def get_serializer(self, *args, **kwargs):
-        print("🟢 REQUEST.DATA serializerga kelishdan oldin:", kwargs.get('data'))
-        return super().get_serializer(*args, **kwargs)
