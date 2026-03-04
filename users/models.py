@@ -33,35 +33,35 @@ class CustomUser(BaseModels,AbstractUser):
         (VIA_PHONE,VIA_PHONE)
     )
     user_role = models.CharField(max_length=20,choices=USER_ROLE, default=ORDINARY_USER)
-    auth_status = models.CharField(max_length=20,choices=USER_AUTH_STATUS, default=NEW)
-    auth_type = models.CharField(max_length=20,choices=USER_AUTH_STATUS)
+    auth_status = models.CharField(max_length=20,choices=USER_STATUS, default=NEW)
+    auth_type = models.CharField(max_length=20,choices=USER_AUTH_STATUS,null=True,blank=True)
     email = models.EmailField(max_length=100,blank=True,null=True,unique=True)
-    phone = models.CharField(max_length=13,blank=True,null=True,unique=True)
-    user = models.ImageField(upload_to='/user_photo',validators=[FileExtensionValidator(allowed_extensions=['png','jpg','heic'])])
+    phone_number = models.CharField(max_length=13,blank=True,null=True,unique=True)
+    user = models.ImageField(upload_to='user_photo/',validators=[FileExtensionValidator(allowed_extensions=['png','jpg','heic'])],null=True,blank=True)
 
     def __str__(self):
         return self.username
 
     def check_username(self):
         if not self.username:
-            temp_username = f" username{ uuid.uuid4().__str__().split('-')[-1]}"
-            while CustomUser.objects.filter(username=temp_username).filter().exists():
-                temp_username += str(random.randint(0,9))
+            temp_username = f"username{ uuid.uuid4().__str__().split('-')[-1]}"
+            user = CustomUser.objects.filter(username=temp_username).first()
+            if user:
+                while user.exists():
+                    temp_username += str(random.randint(0,9))
             self.username = temp_username
 
-    def check_pass(self):
+    def set_temp_password(self):
         if not self.password:
             temp_password = f"pass{(uuid.uuid4().__str__().split('-')[-1])}"
-            self.username = temp_password
+            self.set_password(temp_password)
 
-    def hashing_pass(self):
-        if self.password.startswith('pbkdf2_sha256'):
-            self.password = self.set_password(self.password)
+
 
     def check_email(self):
         if self.email:
-            email_normaliz = self.email.lower()
-            self.email = email_normaliz
+            email_normalize = self.email.lower()
+            self.email = email_normalize
 
     def token(self):
         refresh_token = RefreshToken.for_user(self)
@@ -73,7 +73,7 @@ class CustomUser(BaseModels,AbstractUser):
         return data
 
     def generate_cod(self,verify_type):
-        code = ''.join([random.randint(1000,9999)%10 for _ in range(4)])
+        code = ''.join([str(random.randint(0,9)) for _ in range(4)])
         CodeVerify.objects.create(
             code=code,
             user=self,
@@ -83,15 +83,12 @@ class CustomUser(BaseModels,AbstractUser):
 
 
 
-    def clean(self):
+
+    def save(self, *args, **kwargs):
         self.check_email()
         self.check_username()
-        self.check_pass()
-        self.hashing_pass()
-
-    def save(self, force_insert = ...,force_update = ..., using = ..., update_fields = ...):
-        self.clean()
-        super().save(force_insert,force_update, using, update_fields)
+        self.set_temp_password()
+        super().save(*args,**kwargs)
 
 
 class CodeVerify(BaseModels):
@@ -104,6 +101,7 @@ class CodeVerify(BaseModels):
     code = models.CharField(max_length=4)
     verify_type = models.CharField(max_length=30,choices=VERIFY_TYPE)
     expiration_time = models.DateTimeField()
+    is_active = models.BooleanField(default=False)
 
     def save(self,*args,**kwargs):
         if self.verify_type == VIA_EMAIL:
@@ -111,7 +109,7 @@ class CodeVerify(BaseModels):
         else:
             self.expiration_time = datetime.now()+timedelta(minutes=PHONE_EXPIRATION_TIME)
 
-        return super().save(*args,**kwargs)
+        super().save(*args,**kwargs)
 
     def __str__(self):
         return f"{self.user.username} | {self.code}"
