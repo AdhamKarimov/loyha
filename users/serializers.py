@@ -78,7 +78,40 @@ class SignUpSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data['message'] = 'Kodingiz yuborildi'
-        data['refresh'] = instance.token()['refresh']
-        data['access'] = instance.token()['access']
+        data['message'] = 'Kodingiz yuborildi Iltimos kodni tasdiqlang'
         return data
+
+
+class VerifySerializer(serializers.Serializer):
+    email_or_phone = serializers.CharField(write_only=True, required=True)
+    code = serializers.CharField(write_only=True, required=True)
+
+    def validate(self, attrs):
+        email_or_phone = attrs.get('email_or_phone')
+        code = attrs.get('code')
+        try:
+            user = CustomUser.objects.get(Q(phone_number=email_or_phone) | Q(email=email_or_phone))
+        except CustomUser.DoesNotExist:
+            raise ValidationError("Foydalanuvchi topilmadi.")
+
+        verify_code = CodeVerify.objects.filter(
+            user=user,
+            code=code,
+        ).order_by('-created_at').first()
+
+        if not verify_code:
+            raise ValidationError("Tasdiqlash kodi xato yoki yaroqsiz.")
+
+        user.auth_status = 'VERIFIED'
+        user.save()
+        attrs['user'] = user
+        return attrs
+
+    def to_representation(self, instance):
+        user = instance['user']
+        return {
+            'message': 'Muvaffaqiyatli tasdiqlandi',
+            'auth_status': user.auth_status,
+            'access': user.token()['access'],
+            'refresh': user.token()['refresh'],
+        }
