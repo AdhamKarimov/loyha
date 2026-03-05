@@ -4,7 +4,7 @@ from django.db.models import Q
 from rest_framework import serializers,status
 
 from config import settings
-from .models import CodeVerify,CustomUser, VIA_EMAIL, VIA_PHONE
+from .models import CodeVerify,CustomUser, VIA_EMAIL, VIA_PHONE , CODE_VERIFY
 from rest_framework.exceptions import ValidationError
 from shared.utilis import check_email_or_phone
 
@@ -102,7 +102,7 @@ class VerifySerializer(serializers.Serializer):
         if not verify_code:
             raise ValidationError("Tasdiqlash kodi xato yoki yaroqsiz.")
 
-        user.auth_status = 'VERIFIED'
+        user.auth_status = CODE_VERIFY
         user.save()
         attrs['user'] = user
         return attrs
