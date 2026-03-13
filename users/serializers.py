@@ -2,12 +2,14 @@
 from django.core.mail import send_mail
 from django.db.models import Q
 from rest_framework import serializers,status
+from rest_framework.authentication import TokenAuthentication
 
 from config import settings
-from .models import CodeVerify,CustomUser, VIA_EMAIL, VIA_PHONE , CODE_VERIFY,DONE
+from .models import CodeVerify,CustomUser, VIA_EMAIL, VIA_PHONE , CODE_VERIFY,DONE,PHOTO_DONE
 from rest_framework.exceptions import ValidationError
-from shared.utilis import check_email_or_phone
-
+from shared.utilis import check_email_or_phone,check_email_or_phone_or_username
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.contrib.auth import authenticate
 
 
 class SignUpSerializer(serializers.ModelSerializer):
@@ -186,3 +188,78 @@ class UserChangeInfoSerializer(serializers.Serializer):
         instance.auth_status = DONE
         instance.save()
         return instance
+
+class UserPhontoStatisSerializer(serializers.Serializer):
+    photo = serializers.ImageField()
+
+    def update(self, instance, validated_data):
+        photo = validated_data.get('photo', None)
+        if photo:
+            instance.photo = photo
+        if instance.auth_status == DONE:
+            instance.auth_status = PHOTO_DONE
+        instance.save()
+        return instance
+
+
+class LoginSerializer(TokenObtainPairSerializer):
+    password = serializers.CharField(required=True, write_only=True)
+
+    def __init__(self):
+        super().__init__()
+        self.fields['username_input'] = serializers.CharField(required=True, write_only=True)
+        self.fields['username'] = serializers.CharField(read_only=True)
+
+    def validate(self, attrs):
+        user = self.chek_user_type(attrs)
+        return {
+            "status": status.HTTP_200_OK,
+            'message':"siz login qildingiz",
+            'access': user.token()['access'],
+            'refresh': user.token()['refresh'],
+        }
+
+
+
+    def chek_user_type(self,data):
+        password = data.get('password')
+        user_input_data = data.get('username_input')
+        user_type = check_email_or_phone_or_username(user_input_data)
+        if user_type == "username":
+            user = CustomUser.objects.filter(username = user_input_data).first()
+            self.get_user(user)
+            username = user_input_data
+        elif user_type == "email":
+            user = CustomUser.objects.filter(email__icontaions=user_input_data.lower()).first()
+            self.get_user(user)
+            username = user.username
+        elif user_type == "phone":
+            user = CustomUser.objects.filter(phone_number__iconions=user_input_data).first()
+            self.get_user(user)
+            username = user.username
+        else:
+            raise ValidationError(detail="Ma'lumot topilmadi")
+
+
+        authentication_kwargs = {
+            "password": password,
+            self.username_field: username,
+        }
+
+        if user.auth_status not in [DONE or PHOTO_DONE]:
+            raise ValidationError(detail="Siz hali to'liq ro'yxatdan o'tmagansiz")
+
+        user = authenticate(**authentication_kwargs)
+        if not user:
+            raise ValidationError(detail="Login yoki parol xato")
+
+        return user
+
+
+    def get_user(self,user):
+        if not user:
+            raise ValidationError({"message":'Xato maliumot kiritdingiz','status':status.HTTP_400_BAD_REQUEST})
+        return True
+
+
+
