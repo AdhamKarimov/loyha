@@ -2,8 +2,6 @@
 from django.core.mail import send_mail
 from django.db.models import Q
 from rest_framework import serializers,status
-from rest_framework.authentication import TokenAuthentication
-
 from config import settings
 from .models import CodeVerify,CustomUser, VIA_EMAIL, VIA_PHONE , CODE_VERIFY,DONE,PHOTO_DONE
 from rest_framework.exceptions import ValidationError
@@ -79,9 +77,12 @@ class SignUpSerializer(serializers.ModelSerializer):
         return email_or_phone
 
     def to_representation(self, instance):
-        data = super().to_representation(instance)
-        data['message'] = 'Kodingiz yuborildi Iltimos kodni tasdiqlang'
-        return data
+        user = instance
+        return {
+            'message': 'Kodingiz yuborildi. Iltimos, kodni tasdiqlang.',
+            'access': user.token()['access'],
+            'refresh': user.token()['refresh'],
+        }
 
 
 class VerifySerializer(serializers.Serializer):
@@ -205,8 +206,8 @@ class UserPhontoStatisSerializer(serializers.Serializer):
 class LoginSerializer(TokenObtainPairSerializer):
     password = serializers.CharField(required=True, write_only=True)
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self,*args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.fields['username_input'] = serializers.CharField(required=True, write_only=True)
         self.fields['username'] = serializers.CharField(read_only=True)
 
@@ -230,11 +231,11 @@ class LoginSerializer(TokenObtainPairSerializer):
             self.get_user(user)
             username = user_input_data
         elif user_type == "email":
-            user = CustomUser.objects.filter(email__icontaions=user_input_data.lower()).first()
+            user = CustomUser.objects.filter(email__icontains=user_input_data.lower()).first()
             self.get_user(user)
             username = user.username
         elif user_type == "phone":
-            user = CustomUser.objects.filter(phone_number__iconions=user_input_data).first()
+            user = CustomUser.objects.filter(phone_number__icontains=user_input_data).first()
             self.get_user(user)
             username = user.username
         else:
@@ -262,4 +263,58 @@ class LoginSerializer(TokenObtainPairSerializer):
         return True
 
 
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    user_input = serializers.CharField(required=True, write_only=True)
+
+    def validate(self, attrs):
+        user_data = attrs.get('user_input',None)
+        if not user_data:
+            raise ValidationError("Email, telefon raqam yoki username kiriting")
+
+        user_data_type = check_email_or_phone_or_username(user_data)
+        user = CustomUser.objects.filter(Q(username=user_data)|Q(email=user_data)|Q(phone_number=user_data)).first()
+        if not user:
+            raise ValidationError("Email, telefon raqam yoki username kiriting")
+        if user and user_data_type=='username':
+            if user.email:
+                code = user.generate_code()
+                try:
+                    send_mail(
+                        'Tasdiqlash kodi',
+                        f'Sizning kodingiz: {code}',
+                        settings.DEFAULT_FROM_EMAIL,
+                        [user.email],
+                        fail_silently=False,
+                    )
+                except Exception as e:
+                    raise ValidationError({"email": f"Xat yuborishda xatolik yuz berdi: {str(e)}"})
+            elif user.phone_number:
+                code = user.generate_code()
+                print(":::::::::::",code)
+
+            else:
+                print("siz to'lq ro'yxatdan o'tmagansiz")
+        elif user_data_type=='phone_number':
+            code = user.generate_code()
+            print(":::::::::::",code)
+
+        elif user_data_type=='email':
+            code = user.generate_code()
+            try:
+                send_mail(
+                    'Tasdiqlash kodi',
+                    f'Sizning kodingiz: {code}',
+                    settings.DEFAULT_FROM_EMAIL,
+                    [user.email],
+                    fail_silently=False,
+                )
+            except Exception as e:
+                raise ValidationError({"email": f"Xat yuborishda xatolik yuz berdi: {str(e)}"})
+
+            response={
+                "status":status.HTTP_201_CREATED,
+                "message":"kod yuborildi"
+            }
+            return response
 

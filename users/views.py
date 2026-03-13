@@ -2,7 +2,8 @@ from rest_framework.generics import CreateAPIView
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.exceptions import ValidationError
 from .models import CustomUser
 from .serializers import SignUpSerializer , VerifySerializer,UserChangeInfoSerializer,UserPhontoStatisSerializer,LoginSerializer
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -20,7 +21,7 @@ class SignUpView(CreateAPIView):
 
 
 class VerifiyCodeVew(generics.GenericAPIView):
-    permission_classes = (AllowAny,)
+    permission_classes = (IsAuthenticated,)
     serializer_class = VerifySerializer
     def post(self,request):
         serializer = self.get_serializer(data=request.data)
@@ -66,3 +67,46 @@ class UserPhotoChangeView(APIView):
 
 class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
+
+
+class LogoutView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request):
+        refresh = self.request.data.get('refresh',None)
+        try:
+            refresh_token = RefreshToken(refresh)
+            refresh_token.blacklist()
+        except Exception as e:
+            raise ValidationError( datail=f"xatolik:{e}" )
+
+        else:
+            return Response({
+                'status': status.HTTP_200_OK,
+                'message':"Tizimdan chiqdingiz"
+            })
+
+
+class LoginRefreshView(APIView):
+    permission_classes = (AllowAny, )
+    def post(self, request):
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response({
+                'status': status.HTTP_400_BAD_REQUEST,
+                'message':"refresh token yuborilmadi"
+            })
+
+        try:
+            token = RefreshToken(refresh_token)
+
+            return Response({
+                'status': status.HTTP_201_CREATED,
+                'access_token': str(token.access_token)
+            })
+
+        except Exception:
+            return Response({
+                'status': status.HTTP_400_BAD_REQUEST,
+                'message': "Refresh token noto‘g‘ri yoki eskirgan",
+            })
