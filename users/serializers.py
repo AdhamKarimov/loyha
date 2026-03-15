@@ -247,7 +247,7 @@ class LoginSerializer(TokenObtainPairSerializer):
             self.username_field: username,
         }
 
-        if user.auth_status not in [DONE or PHOTO_DONE]:
+        if user.auth_status not in [DONE, PHOTO_DONE]:
             raise ValidationError(detail="Siz hali to'liq ro'yxatdan o'tmagansiz")
 
         user = authenticate(**authentication_kwargs)
@@ -265,56 +265,59 @@ class LoginSerializer(TokenObtainPairSerializer):
 
 
 class ForgotPasswordSerializer(serializers.Serializer):
-    user_input = serializers.CharField(required=True, write_only=True)
-
+    user_input = serializers.CharField(write_only=True)
     def validate(self, attrs):
-        user_data = attrs.get('user_input',None)
-        if not user_data:
-            raise ValidationError("Email, telefon raqam yoki username kiriting")
-
-        user_data_type = check_email_or_phone_or_username(user_data)
-        user = CustomUser.objects.filter(Q(username=user_data)|Q(email=user_data)|Q(phone_number=user_data)).first()
+        user_input = attrs.get("user_input")
+        user = CustomUser.objects.filter(
+            Q(username=user_input) |
+            Q(email=user_input) |
+            Q(phone_number=user_input)
+        ).first()
         if not user:
-            raise ValidationError("Email, telefon raqam yoki username kiriting")
-        if user and user_data_type=='username':
-            if user.email:
-                code = user.generate_code()
-                try:
-                    send_mail(
-                        'Tasdiqlash kodi',
-                        f'Sizning kodingiz: {code}',
-                        settings.DEFAULT_FROM_EMAIL,
-                        [user.email],
-                        fail_silently=False,
-                    )
-                except Exception as e:
-                    raise ValidationError({"email": f"Xat yuborishda xatolik yuz berdi: {str(e)}"})
-            elif user.phone_number:
-                code = user.generate_code()
-                print(":::::::::::",code)
+            raise ValidationError("Foydalanuvchi topilmadi")
+        code = user.generate_code()
+        if user.email:
+            send_mail(
+                'Tasdiqlash kodi',
+                f'Sizning kodingiz: {code}',
+                settings.DEFAULT_FROM_EMAIL,
+                [user.email],
+                fail_silently=False,
+            )
+        elif user.phone_number:
+            print("SMS kod:", code)
+        else:
+            raise ValidationError("Foydalanuvchida email ham telefon ham mavjud emas")
+        attrs['user'] = user
+        return attrs
 
-            else:
-                print("siz to'lq ro'yxatdan o'tmagansiz")
-        elif user_data_type=='phone_number':
-            code = user.generate_code()
-            print(":::::::::::",code)
 
-        elif user_data_type=='email':
-            code = user.generate_code()
-            try:
-                send_mail(
-                    'Tasdiqlash kodi',
-                    f'Sizning kodingiz: {code}',
-                    settings.DEFAULT_FROM_EMAIL,
-                    [user.email],
-                    fail_silently=False,
-                )
-            except Exception as e:
-                raise ValidationError({"email": f"Xat yuborishda xatolik yuz berdi: {str(e)}"})
+class ResetPasswordSerializer(serializers.Serializer):
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True, min_length=8)
 
-            response={
-                "status":status.HTTP_201_CREATED,
-                "message":"kod yuborildi"
+    def validate(self, data):
+        new_password = data.get('password', None)
+        confirm_password = data.get('confirm_password', None)
+
+        if new_password is None or confirm_password is None or new_password != confirm_password:
+            response = {
+                'status': status.HTTP_400_BAD_REQUEST,
+                'message': 'Parollar mos emas yoki xato kiritildi'
             }
-            return response
+            raise ValidationError(response)
+        if len([i for i in new_password if i == ' ']) > 0:
+            response = {
+                'status': status.HTTP_400_BAD_REQUEST,
+                'message': 'Parollar xato kiritildi'
+            }
+            raise ValidationError(response)
 
+        return data
+
+    def save(self, **kwargs):
+        user = kwargs.get('user')
+        password = self.validated_data['new_password']
+        user.set_password(password)
+        user.save()
+        return user
